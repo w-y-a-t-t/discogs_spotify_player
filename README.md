@@ -59,7 +59,7 @@ You'll need your own Spotify API credentials:
 
 ### 4. Verify Installation
 
-1. Go to any [Discogs release page](https://www.discogs.com/release/) or [master page](https://www.discogs.com/master/)
+1. Go to any [Discogs release page](https://www.discogs.com/release/2306941-Bob-Dylan-Blood-On-The-Tracks?ev=) or [master page](https://www.discogs.com/master/3878-Bob-Dylan-Blood-On-The-Tracks)
 2. You should see either:
    - A Spotify player at the top of the page if the album was found
    - A "Connect Spotify to View Player" button if you need to authorize the application
