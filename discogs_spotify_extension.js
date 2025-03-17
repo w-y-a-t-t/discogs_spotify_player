@@ -33,10 +33,21 @@
         spotifyApiBase: 'https://api.spotify.com/v1',
         authEndpoint: 'https://accounts.spotify.com/authorize',
         redirectUri: 'https://www.discogs.com/callback',
-        tokenMaxAge: 50 * 60 * 1000, // 50 minutes
+        tokenMaxAge: 24 * 60 * 60 * 1000, // 24 hours
         maxLoadWaitTime: 10000, // Increased to 10 seconds
         maxRetries: 3,
-        retryDelay: 1000
+        retryDelay: 1000,
+        initDebounceTime: 500 // Prevent multiple initializations within 500ms
+    };
+
+    // State management to prevent auth container flashing
+    let authState = {
+        isAuthenticating: false,
+        authContainerVisible: false,
+        loadingVisible: false,
+        playerVisible: false,
+        isInitializing: false,
+        lastInitTime: 0
     };
 
     // Add styles
@@ -189,24 +200,49 @@
         return document.body;
     };
 
+    // Show loading indicator
+    const showLoadingIndicator = () => {
+        // Don't remove auth container if we're in auth process
+        if (!authState.isAuthenticating) {
+            document.querySelectorAll('.spotify-player-container, .spotify-auth-container').forEach(el => el.remove());
+            authState.authContainerVisible = false;
+        } else {
+            // Only remove player containers, not auth containers
+            document.querySelectorAll('.spotify-player-container').forEach(el => el.remove());
+        }
+        
+        // Only show loading if not already visible
+        if (!authState.loadingVisible) {
+            authState.loadingVisible = true;
+            authState.playerVisible = false;
+            
+            const container = document.createElement('div');
+            container.className = 'spotify-player-container';
+            container.innerHTML = `<div class="spotify-loading"><div class="spotify-loading-spinner"></div><span>Searching Spotify...</span></div>`;
+            findInjectionPoint().insertBefore(container, findInjectionPoint().firstChild);
+        }
+    };
+
     // Inject player
     const injectPlayer = (albumId) => {
-        document.querySelectorAll('.spotify-player-container, .spotify-auth-container').forEach(el => el.remove());
+        // Don't remove auth container if we're in auth process
+        if (!authState.isAuthenticating) {
+            document.querySelectorAll('.spotify-player-container, .spotify-auth-container').forEach(el => el.remove());
+            authState.authContainerVisible = false;
+        } else {
+            // Only remove existing player/loading containers, not auth containers
+            document.querySelectorAll('.spotify-player-container').forEach(el => el.remove());
+        }
+        
+        authState.loadingVisible = false;
+        authState.playerVisible = true;
+        
         const container = document.createElement('div');
         container.className = 'spotify-player-container';
         container.innerHTML = albumId ?
             `<iframe src="https://open.spotify.com/embed/album/${albumId}" width="100%" height="80" frameborder="0" allowtransparency="true" allow="encrypted-media"></iframe>` +
             `<div style="font-size: 11px; margin-top: 4px; text-align: right; color: #666;">Developed by <a href="https://github.com/w-y-a-t-t/discogs_spotify_extension" style="color: #666; text-decoration: underline;" target="_blank">w-y-a-t-t</a></div>` :
             `<div class="spotify-player-error">Release not found on Spotify</div>`;
-        findInjectionPoint().insertBefore(container, findInjectionPoint().firstChild);
-    };
-
-    // Show loading indicator
-    const showLoadingIndicator = () => {
-        document.querySelectorAll('.spotify-player-container, .spotify-auth-container').forEach(el => el.remove());
-        const container = document.createElement('div');
-        container.className = 'spotify-player-container';
-        container.innerHTML = `<div class="spotify-loading"><div class="spotify-loading-spinner"></div><span>Searching Spotify...</span></div>`;
         findInjectionPoint().insertBefore(container, findInjectionPoint().firstChild);
     };
 
@@ -287,6 +323,9 @@
 
     // Token management
     const getSpotifyToken = async () => {
+        // If we're already showing auth container, don't show another one
+        if (authState.isAuthenticating) return null;
+
         const token = GM_getValue('spotify_token');
         const timestamp = GM_getValue('token_timestamp');
         if (token && timestamp && (Date.now() - timestamp < CONFIG.tokenMaxAge)) return token;
@@ -294,20 +333,26 @@
         GM_deleteValue('spotify_token');
         GM_deleteValue('token_timestamp');
 
-        const container = document.createElement('div');
-        container.className = 'spotify-auth-container';
-        container.innerHTML = `<p>Connect to Spotify to see if this release is available to stream.</p><button class="spotify-login-button">Connect Spotify</button>`;
-        findInjectionPoint().insertBefore(container, findInjectionPoint().firstChild);
+        // Only show auth container if it's not already visible
+        if (!authState.authContainerVisible) {
+            authState.isAuthenticating = true;
+            authState.authContainerVisible = true;
+            
+            const container = document.createElement('div');
+            container.className = 'spotify-auth-container';
+            container.innerHTML = `<p>Connect to Spotify to see if this release is available to stream.</p><button class="spotify-login-button">Connect Spotify</button>`;
+            findInjectionPoint().insertBefore(container, findInjectionPoint().firstChild);
 
-        container.querySelector('button').addEventListener('click', () => {
-            GM_setValue('discogs_return_url', window.location.href);
-            const authUrl = new URL(CONFIG.authEndpoint);
-            authUrl.searchParams.append('client_id', CONFIG.clientId);
-            authUrl.searchParams.append('response_type', 'token');
-            authUrl.searchParams.append('redirect_uri', CONFIG.redirectUri);
-            authUrl.searchParams.append('scope', 'user-read-private');
-            GM_openInTab(authUrl.toString(), { active: true });
-        });
+            container.querySelector('button').addEventListener('click', () => {
+                GM_setValue('discogs_return_url', window.location.href);
+                const authUrl = new URL(CONFIG.authEndpoint);
+                authUrl.searchParams.append('client_id', CONFIG.clientId);
+                authUrl.searchParams.append('response_type', 'token');
+                authUrl.searchParams.append('redirect_uri', CONFIG.redirectUri);
+                authUrl.searchParams.append('scope', 'user-read-private');
+                GM_openInTab(authUrl.toString(), { active: true });
+            });
+        }
 
         return null;
     };
@@ -316,6 +361,8 @@
     const validateToken = async (token) => {
         try {
             await spotifyApiRequest(`${CONFIG.spotifyApiBase}/me`, token);
+            // When token is valid, clear auth state
+            authState.isAuthenticating = false;
             return true;
         } catch (error) {
             logError('Token validation failed', error);
@@ -341,6 +388,8 @@
         if (token) {
             GM_setValue('spotify_token', token);
             GM_setValue('token_timestamp', Date.now());
+            // Reset auth state when we get a token
+            authState.isAuthenticating = false;
             if (returnUrl) {
                 GM_setValue('discogs_return_url', null);
                 window.location.href = returnUrl;
@@ -352,32 +401,56 @@
 
     // Main initialization
     const init = async () => {
+        // Debounce initialization to prevent multiple calls in quick succession
+        const now = Date.now();
+        if (authState.isInitializing || (now - authState.lastInitTime < CONFIG.initDebounceTime)) {
+            log('Initialization already in progress or too soon, skipping');
+            return;
+        }
+        
+        authState.isInitializing = true;
+        authState.lastInitTime = now;
+        
         log('Initializing...', { url: window.location.href });
 
         if (window.location.href.includes('/callback')) {
             if (handleCallback()) return;
         }
 
-        if (!isDiscogsPage()) return;
+        if (!isDiscogsPage()) {
+            authState.isInitializing = false;
+            return;
+        }
 
         const pageLoaded = await waitForPageLoad();
         if (!pageLoaded) {
             logError('Page not fully loaded after timeout');
+            authState.isInitializing = false;
             return;
         }
 
         const albumInfo = extractAlbumInfo();
-        if (!albumInfo) return;
+        if (!albumInfo) {
+            authState.isInitializing = false;
+            return;
+        }
 
         const token = await getSpotifyToken();
-        if (!token) return;
+        if (!token) {
+            // We're showing the auth container, keep isInitializing true
+            // It will be reset after authentication completes
+            return;
+        }
 
+        // Validate token but don't modify DOM if validation fails
         if (!(await validateToken(token))) {
-            document.querySelectorAll('.spotify-auth-container, .spotify-player-container').forEach(el => el.remove());
+            // Don't remove auth container, just get a new token
             await getSpotifyToken();
             return;
         }
 
+        // If we got here, authentication is complete
+        authState.isAuthenticating = false;
         showLoadingIndicator();
         try {
             const albumId = await searchSpotifyAlbum(albumInfo.title, albumInfo.artist, token);
@@ -385,13 +458,22 @@
         } catch (error) {
             logError('Search error', error);
             injectPlayer(null);
+        } finally {
+            authState.isInitializing = false;
         }
     };
 
     // Start script
     const start = () => {
         addStyles();
-        init().catch(error => logError('Init failed', error));
+        
+        // Use setTimeout to ensure we don't interfere with page load
+        setTimeout(() => {
+            init().catch(error => {
+                logError('Init failed', error);
+                authState.isInitializing = false;
+            });
+        }, 100);
     };
 
     if (document.readyState === 'loading') {
