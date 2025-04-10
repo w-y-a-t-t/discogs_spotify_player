@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         Discogs Spotify Extension
-// @namespace    https://github.com/w-y-a-t-t/discogs_spotify_extension
+// @namespace    https://github.com/w-y-a-t-t/discogs_spotify_player
 // @version      1.0
 // @description  Automatically embeds Spotify players on Discogs release and master pages
 // @author       w-y-a-t-t
-// @homepage     https://github.com/w-y-a-t-t/discogs_spotify_extension
-// @supportURL   https://github.com/w-y-a-t-t/discogs_spotify_extension
+// @homepage     https://github.com/w-y-a-t-t/discogs_spotify_player
+// @supportURL   https://github.com/w-y-a-t-t/discogs_spotify_player
 // @match        https://www.discogs.com/master/*
 // @match        https://www.discogs.com/release/*
 // @match        https://www.discogs.com/*/master/*
@@ -241,7 +241,7 @@
         container.className = 'spotify-player-container';
         container.innerHTML = albumId ?
             `<iframe src="https://open.spotify.com/embed/album/${albumId}" width="100%" height="80" frameborder="0" allowtransparency="true" allow="encrypted-media"></iframe>` +
-            `<div style="font-size: 11px; margin-top: 4px; text-align: right; color: #666;">Developed by <a href="https://github.com/w-y-a-t-t/discogs_spotify_extension" style="color: #666; text-decoration: underline;" target="_blank">w-y-a-t-t</a></div>` :
+            `<div style="font-size: 11px; margin-top: 4px; text-align: right; color: #666;">Developed by <a href="https://github.com/w-y-a-t-t/discogs_spotify_player" style="color: #666; text-decoration: underline;" target="_blank">w-y-a-t-t</a></div>` :
             `<div class="spotify-player-error">Release not found on Spotify</div>`;
         findInjectionPoint().insertBefore(container, findInjectionPoint().firstChild);
     };
